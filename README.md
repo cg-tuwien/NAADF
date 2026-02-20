@@ -49,4 +49,4 @@ The default scene is [Oasis](https://github.com/Phyronnaz/VoxelAssets/tree/maste
 
 In "Settings.cs" and "Content/shaders/settings.fxh" some build flags can be configured.
 
-**Currently only Windows is supported.**
+**Currently only Windows 10/11 is supported.**
