@@ -8,7 +8,7 @@ The engine is using the [MonoGame](https://monogame.net/) framework. In order to
 
 The data structure consists of 3 layers. 4^3^ voxels are grouped into blocks, and 4^3 blocks are again grouped into a chunk. Empty space is using AADFs to accelerate ray traversal. In contrast to Signed Distance Fields (SDF), AADFs are directional along each axis (x-, x+, y-, y+, z-, z+) resulting in significantly improved performance.
 
-The engine has its own voxel format (*.cvox) which is simply the chunk, block and voxel buffer compressed as a ZIP archive.\
+The engine uses its own voxel format (*.cvox) which is simply the chunk, block and voxel buffer compressed as a ZIP archive.\
 World generation happens on the GPU. Editing and entity logic is done on the CPU and then synchronized with the GPU.
 
 ### Points of interest
