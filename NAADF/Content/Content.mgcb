@@ -1,0 +1,159 @@
+
+#----------------------------- Global Properties ----------------------------#
+
+/outputDir:bin/$(Platform)
+/intermediateDir:obj/$(Platform)
+/platform:Windows
+/config:
+/profile:Reach
+/compress:False
+
+#-------------------------------- References --------------------------------#
+
+
+#---------------------------------- Content ---------------------------------#
+
+#begin shaders/dataCopy.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/dataCopy.fx
+
+#begin shaders/render/versions/albedo/renderFinal.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/albedo/renderFinal.fx
+
+#begin shaders/render/versions/albedo/renderFirstHit.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/albedo/renderFirstHit.fx
+
+#begin shaders/render/versions/albedo/renderTaaSampleReverse.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/albedo/renderTaaSampleReverse.fx
+
+#begin shaders/render/versions/base/rayQueueCalc.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/rayQueueCalc.fx
+
+#begin shaders/render/versions/base/renderAtmosphere.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderAtmosphere.fx
+
+#begin shaders/render/versions/base/renderDenoiseSplit.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderDenoiseSplit.fx
+
+#begin shaders/render/versions/base/renderFinal.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderFinal.fx
+
+#begin shaders/render/versions/base/renderFirstHit.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderFirstHit.fx
+
+#begin shaders/render/versions/base/renderGlobalIllum.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderGlobalIllum.fx
+
+#begin shaders/render/versions/base/renderSampleRefine.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderSampleRefine.fx
+
+#begin shaders/render/versions/base/renderSpatialResampling.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderSpatialResampling.fx
+
+#begin shaders/render/versions/base/renderTaaSampleReverse.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/base/renderTaaSampleReverse.fx
+
+#begin shaders/render/versions/pathTracer/renderAtmosphere.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/pathTracer/renderAtmosphere.fx
+
+#begin shaders/render/versions/pathTracer/renderFinal.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/pathTracer/renderFinal.fx
+
+#begin shaders/render/versions/pathTracer/renderFirstHit.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/pathTracer/renderFirstHit.fx
+
+#begin shaders/render/versions/pathTracer/renderGlobalIllum.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/render/versions/pathTracer/renderGlobalIllum.fx
+
+#begin shaders/world/data/boundsCalc.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/data/boundsCalc.fx
+
+#begin shaders/world/data/chunkCalc.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/data/chunkCalc.fx
+
+#begin shaders/world/data/entityUpdate.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/data/entityUpdate.fx
+
+#begin shaders/world/data/mapCopy.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/data/mapCopy.fx
+
+#begin shaders/world/data/worldChange.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/data/worldChange.fx
+
+#begin shaders/world/generator/generatorModel.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/generator/generatorModel.fx
+
+#begin shaders/world/model/typeMapping.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/world/model/typeMapping.fx
+
