@@ -1,4 +1,9 @@
 # NAADF: Globally Illuminated Voxel Worlds Accelerated with Nested Axis-Aligned Distance Fields
+
+![teaser](images/screenshot1.png)
+*A minecraft world rendered in real-time without using LOD. The world is 8256^2 voxels large.*
+
+## Introduction
 This voxel engine is an implementation of our research paper "NAADF: Globally Illuminated Voxel Worlds Accelerated with Nested Axis-Aligned Distance Fields".\
 It supports dynamic entites and editing with a world size of up to 16384^3 voxels.
 
@@ -25,7 +30,7 @@ World generation happens on the GPU. Editing and entity logic is done on the CPU
 
 ## Usage
 
-Voxel models with the format **\*.vox** and **\*.vl32** voxel models can be imported. Meshes (**\*.obj** and **\*.stl**) can also be voxelized directly.\
+Voxel models with the format **\*.vox** and **\*.vl32** can be imported. Meshes (**\*.obj** and **\*.stl**) can also be voxelized directly.\
 When doing any expensive operations (e.g. importing, saving, ...), look into the console window for progress.
 
 Example voxel models can be found from [vengi-voxel](https://github.com/vengi-voxel/voxels).\
