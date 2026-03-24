@@ -70,9 +70,12 @@ namespace NAADF.Gui
                         if (fileName != null)
                         {
                             ModelData modelData = ModelData.ImportFromVox(fileName);
-                            WorldGeneratorModel worldGenerator = new WorldGeneratorModel();
-                            worldGenerator.SetModel(modelData);
-                            App.worldHandler.ApplyAndGenerateNewWorldData(new WorldData(modelData.size, 4), worldGenerator);
+                            if (modelData != null)
+                            {
+                                WorldGeneratorModel worldGenerator = new WorldGeneratorModel();
+                                worldGenerator.SetModel(modelData);
+                                App.worldHandler.ApplyAndGenerateNewWorldData(new WorldData(modelData.size, 4), worldGenerator);
+                            }
                         }
                     }
                     if (ImGui.MenuItem("Import VL32"))

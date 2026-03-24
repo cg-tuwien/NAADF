@@ -136,7 +136,7 @@ void reprojectOldSamples(uint3 globalID : SV_DispatchThreadID, uint3 groupID : S
         float2 screenPosNew = ndc01New * float2(screenWidth, screenHeight);
         float2 screenPosDif = screenPosNew - pixelPos;
         float screenPosDistanceSqr = dot(screenPosDif, screenPosDif);
-        if (screenPosDistanceSqr > 1.0f)
+        if (screenPosDistanceSqr > 4.0f)
             continue;
         
         // Check if rough specular reflection is valid

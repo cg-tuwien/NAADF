@@ -355,11 +355,36 @@ namespace NAADF.World.Model
 
         public static ModelData ImportFromVox(string filename)
         {
-            Voxels.VoxelDataBytes dataImport = (Voxels.VoxelDataBytes)Voxels.VoxelImport.Import(filename);
+            Console.WriteLine("Reading and parsing voxels from file/s (This might take some time)");
 
-            Point3 modelSize = new Point3(dataImport.Size.X, dataImport.Size.Z, dataImport.Size.Y);
+            List<string> validVoxFiles = new List<string>();
+            if (filename.EndsWith("_0.vox"))
+            {
+                string filenameRaw = filename.Remove(filename.Length - 5);
+                string[] filesInDir = Directory.GetFiles(Path.GetDirectoryName(filename));
+                for (int i = 0; i < filesInDir.Length; ++i)
+                {
+                    if (filesInDir[i].StartsWith(filenameRaw))
+                        validVoxFiles.Add(filesInDir[i]);
+                }
+            }
+            else
+                validVoxFiles.Add(filename);
+
+
+            Voxels.BoundsXYZ totalBounds = new Voxels.BoundsXYZ(new XYZ(99999999), new XYZ(-99999999));
+            List<Voxels.BoundsXYZ> subModelBounds = new List<Voxels.BoundsXYZ>();
+            for (int i = 0; i < validVoxFiles.Count; ++i)
+            {
+                Voxels.BoundsXYZ curModelBounds = (Voxels.BoundsXYZ)Voxels.VoxelImport.GetBounds(validVoxFiles[i]);
+                if (((curModelBounds.Size.X / 16) * 16 != curModelBounds.Size.X || (curModelBounds.Size.Y / 16) * 16 != curModelBounds.Size.Y) && validVoxFiles.Count > 1)
+                    Console.WriteLine("Note: Individual models not aligned properly, could cause artifacts");
+                totalBounds.Add(curModelBounds);
+                subModelBounds.Add(curModelBounds);
+            }
+
+            Point3 modelSize = new Point3(totalBounds.Size.X, totalBounds.Size.Z, totalBounds.Size.Y);
             Point3 sizeInChunks = new Point3((modelSize.X + 15) / 16, (modelSize.Y + 15) / 16, (modelSize.Z + 15) / 16);
-
             uint chunkCount = (uint)(sizeInChunks.X * sizeInChunks.Y * sizeInChunks.Z);
 
             uint[] dataChunk = new uint[chunkCount];
@@ -369,7 +394,6 @@ namespace NAADF.World.Model
             Span<uint> newVoxels = stackalloc uint[32];
             Span<uint> newBlocks = stackalloc uint[64];
 
-
             uint[] coefficients = new uint[65];
             coefficients[64] = 1;
             for (int i = 64 - 1; i >= 0; --i)
@@ -377,104 +401,127 @@ namespace NAADF.World.Model
                 coefficients[i] = 31 * coefficients[i + 1];
             }
 
-            int mapSize = 1024 * 1024 * 32;
+            int mapSize = 1024 * 1024 * 48;
             BlockValue[] map = new BlockValue[mapSize];
+            VoxelType[] types = null;
 
-            for (int c = 0; c < chunkCount; ++c)
+            for (int f = 0; f < validVoxFiles.Count; ++f)
             {
-                Point3 chunkPos = new Point3(c % sizeInChunks.X, (c / sizeInChunks.X) % sizeInChunks.Y, c / (sizeInChunks.X * sizeInChunks.Y));
-                bool isAnyBlock = false;
-                for (int b = 0; b < 64; ++b)
+                Console.WriteLine("Parsing file " + (f + 1) + " of " + validVoxFiles.Count);
+                Voxels.VoxelDataBytes dataImport = (Voxels.VoxelDataBytes)Voxels.VoxelImport.Import(validVoxFiles[f]);
+
+                Point3 subModelSize = new Point3(dataImport.Size.X, dataImport.Size.Z, dataImport.Size.Y);
+                Point3 subModelSizeInChunks = new Point3((subModelSize.X + 15) / 16, (subModelSize.Y + 15) / 16, (subModelSize.Z + 15) / 16);
+                Voxels.XYZ subModelVoxelPosInModel = subModelBounds[f].Min - totalBounds.Min;
+                Point3 subModelChunkPosInModel = new Point3(subModelVoxelPosInModel.X, subModelVoxelPosInModel.Z, subModelVoxelPosInModel.Y) / 16;
+                uint subModelChunkCount = (uint)(subModelSizeInChunks.X * subModelSizeInChunks.Y * subModelSizeInChunks.Z);
+                for (int c = 0; c < subModelChunkCount; ++c)
                 {
-                    Point3 blockPosInChunk = new Point3(b % 4, (b / 4) % 4, b / 16);
-                    bool isAnyVoxel = false;
-                    uint hash = coefficients[0];
-                    for (int v = 0; v < 64; v += 2)
+                    if (c % 10000 == 0)
+                        Console.WriteLine("Converting chunks (" + c + " of " + subModelChunkCount + ")");
+                    Point3 chunkPosInSubModel = new Point3(c % subModelSizeInChunks.X, (c / subModelSizeInChunks.X) % subModelSizeInChunks.Y, c / (subModelSizeInChunks.X * subModelSizeInChunks.Y));
+                    Point3 chunkPos = subModelChunkPosInModel + chunkPosInSubModel;
+                    int chunkIndex = chunkPos.X + chunkPos.Y * sizeInChunks.X + chunkPos.Z * sizeInChunks.X * sizeInChunks.Y;
+                    uint curChunk = dataChunk[chunkIndex];
+                    if (curChunk != 0)
+                        continue;
+                    bool isAnyBlock = false;
+                    for (int b = 0; b < 64; ++b)
                     {
-                        Point3 voxelPosInBlock = new Point3(v % 4, (v / 4) % 4, v / 16);
-                        Point3 voxelPos = chunkPos * 16 + blockPosInChunk * 4 + voxelPosInBlock;
-                        uint typeImport1 = dataImport[new Voxels.XYZ(voxelPos.X, voxelPos.Z, voxelPos.Y)].Index;
-                        uint typeImport2 = dataImport[new Voxels.XYZ(voxelPos.X + 1, voxelPos.Z, voxelPos.Y)].Index;
-                        hash += coefficients[v + 1] * typeImport1;
-                        hash += coefficients[v + 2] * typeImport2;
-
-                        typeImport1 = typeImport1 | (typeImport1 > 0 ? (1u << 15) : 0);
-                        typeImport2 = typeImport2 | (typeImport2 > 0 ? (1u << 15) : 0);
-
-                        newVoxels[v / 2] = typeImport1 | (typeImport2 << 16);
-                        isAnyVoxel |= typeImport1 > 0 || typeImport2 > 0;
-                    }
-                    isAnyBlock |= isAnyVoxel;
-                    if (isAnyVoxel)
-                    {
-                        uint hashBounds = hash & ((uint)mapSize - 1);
-                        int count = 0;
-                        bool isNew = false;
-                        uint voxelPointer = 0;
-                        while (count < 250)
+                        Point3 blockPosInChunk = new Point3(b % 4, (b / 4) % 4, b / 16);
+                        bool isAnyVoxel = false;
+                        uint hash = coefficients[0];
+                        for (int v = 0; v < 64; v += 2)
                         {
-                            BlockValue value = map[hashBounds];
-                            if (value.voxelsPointer == 0) // Found empty hash slot
+                            Point3 voxelPosInBlock = new Point3(v % 4, (v / 4) % 4, v / 16);
+                            Point3 voxelPos = chunkPosInSubModel * 16 + blockPosInChunk * 4 + voxelPosInBlock;
+                            uint typeImport1 = dataImport[new Voxels.XYZ(voxelPos.X, voxelPos.Z, voxelPos.Y)].Index;
+                            uint typeImport2 = dataImport[new Voxels.XYZ(voxelPos.X + 1, voxelPos.Z, voxelPos.Y)].Index;
+                            hash += coefficients[v + 1] * typeImport1;
+                            hash += coefficients[v + 2] * typeImport2;
+
+                            typeImport1 = typeImport1 | (typeImport1 > 0 ? (1u << 15) : 0);
+                            typeImport2 = typeImport2 | (typeImport2 > 0 ? (1u << 15) : 0);
+
+                            newVoxels[v / 2] = typeImport1 | (typeImport2 << 16);
+                            isAnyVoxel |= typeImport1 > 0 || typeImport2 > 0;
+                        }
+                        isAnyBlock |= isAnyVoxel;
+                        if (isAnyVoxel)
+                        {
+                            uint hashBounds = hash & ((uint)mapSize - 1);
+                            int count = 0;
+                            bool isNew = false;
+                            uint voxelPointer = 0;
+                            while (count < 250)
                             {
-                                uint newVoxelPointer = (uint)dataVoxel.Count;
-                                map[hashBounds].hash = hash;
-                                map[hashBounds].voxelsPointer = newVoxelPointer;
-                                voxelPointer = newVoxelPointer;
-                                isNew = true;
-                            }
-                            else // Fully written hash slot
-                            {
-                                if (map[hashBounds].hash == hash)
+                                BlockValue value = map[hashBounds];
+                                if (value.voxelsPointer == 0) // Found empty hash slot
                                 {
-                                    bool isAllEqual = true;
-                                    for (int i = 0; i < 32; ++i)
-                                    {
-                                        uint voxelComp = dataVoxel[(int)value.voxelsPointer + i];
-                                        isAllEqual = isAllEqual && newVoxels[i] == voxelComp;
-                                    }
-                                    if (isAllEqual)
-                                        voxelPointer = value.voxelsPointer;
+                                    uint newVoxelPointer = (uint)dataVoxel.Count;
+                                    map[hashBounds].hash = hash;
+                                    map[hashBounds].voxelsPointer = newVoxelPointer;
+                                    voxelPointer = newVoxelPointer;
+                                    isNew = true;
                                 }
+                                else // Fully written hash slot
+                                {
+                                    if (map[hashBounds].hash == hash)
+                                    {
+                                        bool isAllEqual = true;
+                                        for (int i = 0; i < 32; ++i)
+                                        {
+                                            uint voxelComp = dataVoxel[(int)value.voxelsPointer + i];
+                                            isAllEqual = isAllEqual && newVoxels[i] == voxelComp;
+                                        }
+                                        if (isAllEqual)
+                                            voxelPointer = value.voxelsPointer;
+                                    }
+                                }
+                                if (voxelPointer != 0)
+                                    break;
+                                hashBounds = (hashBounds + 1) & ((uint)mapSize - 1);
+                                count++;
                             }
-                            if (voxelPointer != 0)
-                                break;
-                            hashBounds = (hashBounds + 1) & ((uint)mapSize - 1);
-                            count++;
+                            if (isNew)
+                            {
+                                dataVoxel.AddRange(newVoxels);
+                            }
+                            newBlocks[b] = (voxelPointer) | (2u << 30);
                         }
-                        if (isNew)
-                        {
-                            dataVoxel.AddRange(newVoxels);
-                        }
-                        newBlocks[b] = (voxelPointer) | (2u << 30);
+                        else
+                            newBlocks[b] = 0;
+
                     }
-                    else
-                        newBlocks[b] = 0;
-
+                    dataChunk[chunkIndex] = isAnyBlock ? ((uint)dataBlock.Count | (2u << 30)) : 0;
+                    if (isAnyBlock)
+                        dataBlock.AddRange(newBlocks);
                 }
-                dataChunk[c] = isAnyBlock ? ((uint)dataBlock.Count | (2u << 30)) : 0;
-                if (isAnyBlock)
-                    dataBlock.AddRange(newBlocks);
-            }
 
-            // Parse types
-            VoxelType[] types = new VoxelType[dataImport.Colors.Length];
-            for (int i = 0; i < dataImport.Colors.Length; i++)
-            {
-                VoxelType type = new();
-                Vector3 colSRGB = new Vector3(dataImport.Colors[i].R, dataImport.Colors[i].G, dataImport.Colors[i].B) / 255;
-                type.colorBase = new Vector3((float)Math.Pow(colSRGB.X, 2.2f), (float)Math.Pow(colSRGB.Y, 2.2f), (float)Math.Pow(colSRGB.Z, 2.2f));
-                float emission = dataImport.Materials[i].emit * (float)Math.Pow(1 + dataImport.Materials[i].flux, 2) * 5;
-                if (emission > 0)
+
+                if (f == validVoxFiles.Count - 1) // Parse palette only once
                 {
-                    type.colorLayered.X = emission;
-                    type.materialBase = MaterialTypeBase.Emissive;
+                    Console.WriteLine("Converting to custom palette");
+                    types = new VoxelType[dataImport.Colors.Length];
+                    for (int c = 0; c < dataImport.Colors.Length; c++)
+                    {
+                        VoxelType type = new();
+                        Vector3 colSRGB = new Vector3(dataImport.Colors[c].R, dataImport.Colors[c].G, dataImport.Colors[c].B) / 255;
+                        type.colorBase = new Vector3((float)Math.Pow(colSRGB.X, 2.2f), (float)Math.Pow(colSRGB.Y, 2.2f), (float)Math.Pow(colSRGB.Z, 2.2f));
+                        float emission = dataImport.Materials[c].emit * (float)Math.Pow(1 + dataImport.Materials[c].flux, 2) * 5;
+                        if (emission > 0)
+                        {
+                            type.colorLayered.X = emission;
+                            type.materialBase = MaterialTypeBase.Emissive;
+                        }
+                        else
+                            type.materialBase = MaterialTypeBase.Diffuse;
+                        type.ID = null;
+                        types[c] = App.worldHandler.voxelTypeHandler.ApplyVoxelType(type);
+                    }
                 }
-                else
-                    type.materialBase = MaterialTypeBase.Diffuse;
-                type.ID = null;
-                types[i] = App.worldHandler.voxelTypeHandler.ApplyVoxelType(type);
             }
-
+            Console.WriteLine("Succesfully imported .vox file/s!");
             return new ModelData(filename, modelSize, types, dataChunk, dataBlock.ToArray(), dataVoxel.ToArray(), (uint)dataBlock.Count, (uint)dataVoxel.Count * 2);
         }
 

@@ -12,6 +12,13 @@ namespace Voxels {
         public int Y;
         public int Z;
 
+        public XYZ(int xyz)
+        {
+            this.X = xyz;
+            this.Y = xyz;
+            this.Z = xyz;
+        }
+
         public XYZ(int x, int y, int z) {
             this.X = x;
             this.Y = y;

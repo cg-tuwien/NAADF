@@ -15,5 +15,12 @@ namespace Voxels {
                 return Voxlap.Read(stream);
             }
         }
+
+        public static BoundsXYZ GetBounds(Stream stream)
+        {
+            var magicaVoxel = new MagicaVoxel();
+            magicaVoxel.ReadBounds(stream);
+            return magicaVoxel.GetWorldAABB(0, 0);
+        }
     }
 }

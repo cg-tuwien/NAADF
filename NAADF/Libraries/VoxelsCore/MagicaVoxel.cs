@@ -440,6 +440,117 @@ namespace Voxels
             return true;
         }
 
+        bool ReadBounds(BinaryReader reader)
+        {
+            var magic = reader.ReadUInt32();
+            if (magic != VOX_)
+            {
+                return false;
+            }
+
+            Version = reader.ReadUInt32();
+
+            var voxelData = null as VoxelDataBytes;
+
+            while (reader.PeekChar() != -1)
+            {
+                var chunkId = reader.ReadUInt32();
+                var chunkSize = reader.ReadInt32();
+                var childChunksSize = reader.ReadInt32();
+
+                var chunkName = System.Text.Encoding.ASCII.GetString(BitConverter.GetBytes(chunkId));
+
+                switch (chunkId)
+                {
+                    case MAIN:
+                        {
+                            Debug.Assert(chunkSize == 0);
+                        }
+                        break;
+
+                    case PACK:
+                        {
+                            var numModels = reader.ReadInt32();
+                        }
+                        break;
+
+                    case SIZE:
+                        var sx = reader.ReadInt32();
+                        var sy = reader.ReadInt32();
+                        var sz = reader.ReadInt32();
+                        Debug.Assert(chunkSize == sizeof(int) * 3);
+                        voxelData = new VoxelDataBytes(new XYZ(sx, sy, sz), DefaultPalette, Materials);
+                        Models.Add(voxelData);
+                        break;
+
+                    case nTRN:
+                        {
+                            var node = new TransformNode();
+                            node.id = reader.ReadInt32();
+                            node.attributes = ReadDICT(reader);
+                            node.hidden = node.attributes.TryGetValue("_hidden", out var hidden) && hidden == "1";
+                            node.attributes.TryGetValue("_name", out node.name);
+                            Nodes.Add(node);
+
+                            node.childNodeId = reader.ReadInt32();
+                            var reservedId = reader.ReadInt32(); Debug.Assert(reservedId == -1);
+                            node.layerId = reader.ReadInt32();
+
+                            var numFrames = reader.ReadInt32(); Debug.Assert(numFrames > 0);
+                            for (int i = 0; i < numFrames; i++)
+                            {
+                                node.Frames.Add(TransformFrame.Read(reader));
+                            }
+                        }
+                        break;
+
+                    case nGRP:
+                        {
+                            var node = new GroupNode();
+                            node.id = reader.ReadInt32();
+                            node.attributes = ReadDICT(reader);
+                            Nodes.Add(node);
+
+                            var numChildNodes = reader.ReadInt32();
+                            for (int i = 0; i < numChildNodes; i++)
+                            {
+                                var childNodeId = reader.ReadInt32();
+                                node.ChildNodeIds.Add(childNodeId);
+                            }
+                        }
+                        break;
+
+                    case nSHP:
+                        {
+                            var node = new ShapeNode();
+                            node.id = reader.ReadInt32();
+                            node.attributes = ReadDICT(reader);
+                            Nodes.Add(node);
+
+                            var numModels = reader.ReadInt32(); Debug.Assert(numModels > 0);
+                            for (int i = 0; i < numModels; i++)
+                            {
+                                node.Models.Add(ShapeModel.Read(reader));
+                            }
+                        }
+                        break;
+
+                    default:
+                        reader.BaseStream.Seek(chunkSize, SeekOrigin.Current);
+                        //reader.ReadBytes(chunkSize);
+                        break;
+                }
+            }
+
+            // When no nodes exist just add the palette to the first  
+            foreach (var model in Models)
+            {
+                model.Colors = Palette;
+            }
+
+            return true;
+        }
+
         static DICT ReadDICT(BinaryReader reader) {
             var n = reader.ReadInt32();
             var dict = new DICT();
@@ -517,6 +628,11 @@ namespace Voxels
 
         public bool Read(Stream stream) {
             return Read(new BinaryReader(stream));
+        }
+
+        public bool ReadBounds(Stream stream)
+        {
+            return ReadBounds(new BinaryReader(stream));
         }
         public void Write(Stream stream) {
             Write(new BinaryWriter(stream));

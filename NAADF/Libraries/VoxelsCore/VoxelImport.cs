@@ -10,5 +10,17 @@ namespace Voxels {
             }
             return null;
         }
+
+        public static BoundsXYZ GetBounds(string path)
+        {
+            using (var stream = File.OpenRead(path))
+            {
+                switch (Path.GetExtension(path).ToLowerInvariant())
+                {
+                    case ".vox": return VoxFile.GetBounds(stream);
+                }
+            }
+            return null;
+        }
     }
 }
