@@ -15,7 +15,7 @@ RWStructuredBuffer<uint3> denoisePreprocessed;
 float3 camPosFrac;
 int camPosIntX, camPosIntY, camPosIntZ;
 matrix invCamMatrix;
-float test1;
+float test1, radiusLitFactor;
 uint screenWidth, screenHeight;
 uint globalIlumBucketSizeX, globalIlumBucketSizeY;
 uint randCounter;
@@ -24,8 +24,7 @@ float3 skySunDir, sunColor;
 uint bucketStorageCount;
 uint frameCount, taaIndex;
 float2 taaJitter;
-bool isDenoise, colorCorrection;
-matrix camRotOld;
+bool isDenoise, isVaryingResmaplingRadius;
 
 void getSampleData(uint4 res, out int3 visPosInt, out float3 visPosFrac, out float3 sampleDir, out float sampleDist, out float3 sampleNormal, out bool isDiffuse)
 {
@@ -75,22 +74,89 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
     bool firstHitIsDiffuse = firstHitType.materialBase != SURFACE_SPECULAR_ROUGH;
     
     float radius = test1;
-    float extraSumSamples = 0;
-    float sumSamplesSky = 0, sumSamplesNoSky = 0, sampleCountSky = 0, sampleCountNoSky = 0;
+    float radiusFac = 1;
+    float sumSamples = 0;
     
-    int bucketIndexCur = (pixelPos.x / 8) + (pixelPos.y / 8) * globalIlumBucketSizeX;
-    uint2 bucketInfoCur = globalIlumBucketInfo[bucketIndexCur];
-    float bucketLitRatioCur = f16tof32((bucketInfoCur.x >> 9) & 0x7FFF);
+    
+    if (isVaryingResmaplingRadius)
+    {
+        int validBucketCountSmall = 0, validBucketCountBig = 0;
+        float maxColorSmall = 0, maxColorSumSmall = 1;
+        float worstLitSmall = 0.0001f, worstLitBig = 0.0001f;
+
+        // Find  smallest radius without introducing much flickering
+        for (int i = 0; i < 12; ++i)
+        {
+            float2 xy = (-radius * 0.5f + radius * float2(nextRand(rand), nextRand(rand))) * (i < 6 ? 0.1f : 1.0f);
+        
+            int2 neighborIndex = pixelPos + xy;
+            neighborIndex.x = neighborIndex.x < 0 ? -neighborIndex.x : (neighborIndex.x > screenWidth ? 2 * screenWidth - neighborIndex.x : neighborIndex.x);
+            neighborIndex.y = neighborIndex.y < 0 ? -neighborIndex.y : (neighborIndex.y > screenHeight ? 2 * screenHeight - neighborIndex.y : neighborIndex.y);
+        
+            uint2 bucketPos = (uint2) neighborIndex / 8;
+            uint bucketIndex = bucketPos.x + bucketPos.y * globalIlumBucketSizeX;
+            uint2 bucketInfo = globalIlumBucketInfo[bucketIndex];
+            
+        
+            uint firstHitNormal = (firstHit.normalTang & 0x7) - 1;
+            uint normalMask = bucketInfo.x & 0x3F;
+            if ((normalMask & (1 << firstHitNormal)) == 0)
+                continue;
+        
+            float bucketMinDist = f16tof32(bucketInfo.y & 0xFFFF);
+            float bucketMaxDist = f16tof32(bucketInfo.y >> 16);
+            float distFac = 0.95f * max(0.2f, pow(max(dot(firstHit.normal, -firstHit.rayDir), 0), 0.25f));
+        
+            if (firstHit.dist < bucketMinDist * distFac || firstHit.dist > min(bucketMinDist * 2, bucketMaxDist) / distFac)
+                continue;
+        
+            uint bucketValidStored = (bucketInfo.x >> 6) & 0x7;
+            float bucketLitRatio = f16tof32((bucketInfo.x >> 9) & 0x7FFF);
+            uint samplesCompColorMax = (bucketInfo.x >> 24) & 0x1F;
+            float samplesColorMax = COLORS[samplesCompColorMax];
+            float totalSampleCountComp = (bucketInfo.x >> 29) / 7.0f;
+        
+            if (bucketValidStored > 0)
+            {
+                if (i < 6)
+                {
+                    validBucketCountSmall++;
+                    maxColorSmall = max(maxColorSmall, samplesColorMax);
+                    worstLitSmall += (pow(bucketLitRatio, 2) * bucketValidStored) * pow(totalSampleCountComp, 2);
+                    maxColorSumSmall += samplesColorMax;
+
+                }
+                else
+                {
+                    validBucketCountBig++;
+                    worstLitBig += pow(bucketLitRatio, 2) * bucketValidStored;
+                }
+            }
+        }
+    
+        validBucketCountSmall = max(1, validBucketCountSmall);
+        validBucketCountBig = max(1, validBucketCountBig);
+        if (validBucketCountSmall == 0)
+            maxColorSmall = 100;
+
+        maxColorSumSmall /= validBucketCountSmall;
+        worstLitSmall /= validBucketCountSmall;
+        worstLitBig /= validBucketCountBig;
+    
+        float radiusFacRaw = (max(1, pow(maxColorSmall / maxColorSumSmall, 1)) / (1 * pow(worstLitSmall, 1))) * sqrt(worstLitBig) * radiusLitFactor * 0.01f;
+        radiusFac = 0.07f + clamp(1.0f - (1.0f / (1.0f + radiusFacRaw)), 0, 1);
+    }
+    
+    
+    
     
     for (uint i = 0; i < sampleCount; ++i)
     {
-        float x = -radius * 0.5 + radius * nextRand(rand);
-        float y = -radius * 0.5 + radius * nextRand(rand);
+        float2 xy = -radius * 0.5f + radius * float2(nextRand(rand), nextRand(rand));
+        if (isVaryingResmaplingRadius)
+            xy *= radiusFac;
         
-        radius = lerp(radius, test1, 0.04f);
-        radius = clamp(radius, test1 * 0.2f, test1 * 1.5f);
-        
-        int2 neighborIndex = (int2) pixelPos + int2(x, y);
+        int2 neighborIndex = pixelPos + xy;
         neighborIndex.x = neighborIndex.x < 0 ? -neighborIndex.x : (neighborIndex.x > (int) screenWidth ? 2 * screenWidth - neighborIndex.x : neighborIndex.x);
         neighborIndex.y = neighborIndex.y < 0 ? -neighborIndex.y : (neighborIndex.y > (int) screenHeight ? 2 * screenHeight - neighborIndex.y : neighborIndex.y);
         
@@ -108,21 +174,15 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
         float bucketMaxDist = f16tof32(bucketInfo.y >> 16);
         float distFac = 0.95f * max(0.2f, pow(max(dot(firstHit.normal, -firstHit.rayDir), 0), 0.25f));
         
-        if (firstHit.dist < bucketMinDist * distFac || firstHit.dist > bucketMaxDist / distFac)
+        if (firstHit.dist < bucketMinDist * distFac || firstHit.dist > min(bucketMinDist * 2, bucketMaxDist) / distFac)
             continue;
         
         uint bucketValidStored = (bucketInfo.x >> 6) & 0x7;
         float bucketLitRatio = f16tof32((bucketInfo.x >> 9) & 0x7FFF);
         
-        float distRadiusFac = 0.4f * (1.0f / (1.0f + firstHit.dist * 0.002f));
-
-        radius *= 0.8f;
-        radius *= 1.0f - min(0.3f, lerp(bucketLitRatioCur, bucketLitRatio, 0.25f) * 10) * 0.4f + (1.0f - bucketValidStored * 0.125f) * 0.2f;
-        
         if (bucketValidStored == 0)
         {
-            sumSamplesSky += 0.5f;
-            sumSamplesNoSky += 0.5f;
+            sumSamples++;
             continue;
         }
         
@@ -135,19 +195,10 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
         float neighborFirstBounceDist;
         getSampleData(neighborRes, neighborVisiblePosInt, neighborVisiblePosFrac, neighborFirstBounceDir, neighborFirstBounceDist, neighborSampleNormal, isDiffuse);
         
-        float bucketMinSampleDist = 100000.0f * pow(2, ((bucketInfo.x >> 24) - 255.0f) / 12.0f);
-        if (neighborFirstBounceDist > bucketMinSampleDist * 2)
-            continue;
-        
-        // Different material
         if (firstHitIsDiffuse != isDiffuse)
             continue;
             
         bool isSky = neighborFirstBounceDist == 0;
-        if (isSky)
-            sampleCountSky++;
-        else
-            sampleCountNoSky++;
         
         float3 pathToSampleNeighbor = neighborFirstBounceDir * neighborFirstBounceDist;
         float3 pathToSampleNowFrac = (neighborVisiblePosFrac + pathToSampleNeighbor) - firstHit.pos;
@@ -195,11 +246,7 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
         float weight = max(0, (1.0f / pdfThen) * targetFunctionNeighbor * jacobian);
             
         sumWeight += weight;
-        if (isSky)
-            sumSamplesSky++;
-        else
-            sumSamplesNoSky++;
-        
+        sumSamples++;
     
         bool isUpdate = nextRand(rand) * sumWeight < weight;
         if (isUpdate)
@@ -213,7 +260,6 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
             selectedJacobian = jacobian;
 
         }
-        radius /= 0.7f;
     }
 
     // Check for visibility
@@ -255,7 +301,6 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
     if (!isVisible)
         sumWeight = 0;
     
-    float sumSamples = sumSamplesSky + sumSamplesNoSky;
     float3 brdf = firstHitIsDiffuse ? 1 : getBRDF(firstHitType.roughness, firstHitType.colorBase, firstHit.normal, selectedRayDir, -firstHit.rayDir);
     float targetFunctionNew = getTargetFunctionNew(selectedRayDir, firstHit.normal, selectedColor, brdf);
     float averageWeightNew = sumWeight / max(0.0000000000001f, sumSamples * targetFunctionNew);
@@ -271,21 +316,6 @@ float3 sampleNeighbors(uint2 pixelPos, uint sampleCount, FirstHitResult firstHit
     else
     {
         color *= saturate(dot(firstHit.normal, selectedRayDir)) * (1.0f / PI);
-    }
-    
-    
-    // Boost color based on resampling difficulty.
-    // Sky samples are inverse boosted as they tend to dominate in difficult areas.
-    if (colorCorrection)
-    {
-        float skyValidRatio = sampleCount / max(1, sampleCountSky);
-        float noSkyValidRatio = sampleCount / max(1, sampleCountNoSky);
-        float boostSky = 1.0f + (2.0f / max(1, sumSamplesSky * skyValidRatio));
-        float boostNoSky = 1.0f + 4.0f * (1.0f / max(1, sumSamplesNoSky * noSkyValidRatio));
-        if (selectedIsSky)
-            color *= boostSky;
-        else
-            color *= boostNoSky;
     }
 
     // Sample the sun
@@ -363,7 +393,6 @@ void calcSpatialResampling(uint3 globalID : SV_DispatchThreadID, uint3 groupID :
         uint2 finalColComp = finalColor[globalID.x];
         float3 finalCol = float3(f16tof32(finalColComp.x & 0xFFFF), f16tof32(finalColComp.x >> 16), f16tof32(finalColComp.y));
         finalCol += absorption * color;
-        //finalCol = finalCol * 0.000001f + ((curBucketInfo.x >> 16) / (1 + 0.001f)) * 0.01f;
         finalCol = min(finalCol, COLORS[26]);
         finalColor[globalID.x] = uint2(f32tof16(finalCol.x) | (f32tof16(finalCol.y) << 16), f32tof16(finalCol.z));
     }

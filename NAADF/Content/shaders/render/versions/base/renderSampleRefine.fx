@@ -21,13 +21,14 @@ RWByteAddressBuffer groupCount;
 float3 camPosFrac;
 int camPosIntX, camPosIntY, camPosIntZ;
 matrix camMatrix;
-matrix camRotOld[64];
-float3 taaOldCamPosFromCurCamInt[64];
+matrix camRotOld[128];
+float3 taaOldCamPosFromCurCamInt[128];
 uint sampleMaxAccum, validSampleStorageCount, invalidSampleStorageCount, bucketStorageCount, refinedBucketStorageCount, accumIndex;
 uint randCounter, randCounter2, taaIndex;
 
 uint screenWidth, screenHeight, globalIlumBucketSizeX, globalIlumBucketSizeY, globalIlumBucketCount;
 bool isSampleLeveling;
+float noiseSupressionFactor;
 
 [numthreads(64, 1, 1)]
 void clearBucketsAndCalcMask(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint localIndex : SV_GroupIndex)
@@ -35,7 +36,6 @@ void clearBucketsAndCalcMask(uint3 globalID : SV_DispatchThreadID, uint3 groupID
     if (globalID.x == 0)
     {
         globalIlumSampleCounts[3 + accumIndex] = uint2(0, 0);
-        globalIlumSampleCounts[2].x = 0;
         groupCount.Store(0, 0);
     }
     
@@ -91,8 +91,18 @@ void computeValidHistory(uint3 globalID : SV_DispatchThreadID, uint3 groupID : S
     curSampleIndices.y = (curSampleIndices.y + maxSize.y - curSampleCounts.y) % maxSize.y;
     globalIlumSampleCounts[0] = curSampleIndices;
     globalIlumSampleCounts[1] = totalCounts;
-    globalIlumValidDispatch.Store(0, (totalCounts.x + 63) / 64);
-    globalIlumInvalidDispatch.Store(0, (totalCounts.y + 63) / 64);
+    uint validGroupCount = (totalCounts.x + 63) / 64;
+    uint invalidGroupCount = (totalCounts.y + 63) / 64;
+    uint paddedValidGroupCount = nextPow2(validGroupCount);
+    uint paddedInvalidGroupCount = nextPow2(invalidGroupCount);
+    globalIlumSampleCounts[2] = uint2(findCoprime(paddedValidGroupCount, randCounter), findCoprime(paddedInvalidGroupCount, randCounter2));
+    globalIlumValidDispatch.Store(0, paddedValidGroupCount);
+    globalIlumInvalidDispatch.Store(0, paddedInvalidGroupCount);
+}
+
+uint ShuffleGroup(uint gId, uint numGroups, uint groupShuffleCoprime, uint offset)
+{
+    return (groupShuffleCoprime * gId + offset) % numGroups;
 }
 
 [numthreads(64, 1, 1)]
@@ -101,13 +111,18 @@ void countValidDataAndRefine(uint3 globalID : SV_DispatchThreadID, uint3 groupID
     int3 camPosInt = int3(camPosIntX, camPosIntY, camPosIntZ);
     uint startIndex = globalIlumSampleCounts[0].x;
     uint totalCount = globalIlumSampleCounts[1].x;
+    uint groupShuffleCoprime = globalIlumSampleCounts[2].x;
     uint maxSize = validSampleStorageCount * screenWidth * screenHeight;
-    if (globalID.x >= totalCount)
+    
+    uint paddedGroupCount = nextPow2((totalCount + 63) / 64);
+    uint shuffledGroup = ShuffleGroup(groupID.x, paddedGroupCount, groupShuffleCoprime, randCounter);
+    int ID = shuffledGroup * 64 + localIndex;
+    if (ID >= totalCount)
         return;
     
-    SampleValid sample = globalIlumValidSamples[(startIndex + globalID.x) % maxSize];
+    SampleValid sample = globalIlumValidSamples[(startIndex + ID) % maxSize];
     uint2 pixelPosOld = uint2(sample.data1.y & 0x7FFF, sample.data1.z & 0x7FFF);
-    uint frameIndexOld = sample.data1.w & 0x3F;
+    uint frameIndexOld = sample.data1.w & 0x7F;
     
     float3 rayDirOld = getRayDir(camRotOld[frameIndexOld], pixelPosOld, screenWidth, screenHeight);
     
@@ -178,7 +193,7 @@ void countValidDataAndRefine(uint3 globalID : SV_DispatchThreadID, uint3 groupID
     
     uint oldBucketValue;
     InterlockedAdd(globalIlumBucketInfo[bucketIndex].x, 1 << 6, oldBucketValue);
-    uint oldBucketValid = (oldBucketValue >> 6) & 0x7FF;
+    uint oldBucketValid = (oldBucketValue >> 6) & 0xFFF;
     
     if (oldBucketValid < bucketStorageCount)
     {
@@ -243,13 +258,18 @@ void countInvalidData(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_G
     int3 camPosInt = int3(camPosIntX, camPosIntY, camPosIntZ);
     uint startIndex = globalIlumSampleCounts[0].y;
     uint totalCount = globalIlumSampleCounts[1].y;
+    uint groupShuffleCoprime = globalIlumSampleCounts[2].y;
     uint maxSize = invalidSampleStorageCount * screenWidth * screenHeight;
-    if (globalID.x >= totalCount)
+    
+    uint paddedGroupCount = nextPow2((totalCount + 63) / 64);
+    uint shuffledGroup = ShuffleGroup(groupID.x, paddedGroupCount, groupShuffleCoprime, randCounter);
+    int ID = (shuffledGroup * 64 + localIndex);
+    if (ID >= totalCount)
         return;
     
-    uint4 sample = globalIlumInvalidSamples[(startIndex + globalID.x) % maxSize];
+    uint4 sample = globalIlumInvalidSamples[(startIndex + ID) % maxSize];
     uint2 pixelPosOld = uint2(sample.y & 0x7FFF, sample.z & 0x7FFF);
-    uint frameIndexOld = sample.w & 0x3F;
+    uint frameIndexOld = sample.w & 0x7F;
     
     float3 rayDirOld = getRayDir(camRotOld[frameIndexOld], pixelPosOld, screenWidth, screenHeight);
     
@@ -314,7 +334,7 @@ void countInvalidData(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_G
     if (distCur < distMinMax.x * (1022.0f / 1024.0f) || distCur > distMinMax.y * (1026.0f / 1024.0f) || any((specularNormalsMask & validSpecularNormals) == 0))
         return;
     
-    InterlockedAdd(globalIlumBucketInfo[bucketIndex].x, 1 << 17);
+    InterlockedAdd(globalIlumBucketInfo[bucketIndex].x, 1 << 18);
 }
 
 [numthreads(64, 1, 1)]
@@ -327,16 +347,18 @@ void refineBuckets(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_Grou
     uint2 rand = initRand(uint3(globalID.x, randCounter, randCounter2));
     
     uint2 curBucket = globalIlumBucketInfo[bucketIndex];
-    uint validCount = (curBucket.x >> 6) & 0x7FF;
-    uint invalidCount = (curBucket.x >> 17) * 8;
-    int effectiveValidCount = min(validCount, bucketStorageCount - 1);
+    uint validCount = (curBucket.x >> 6) & 0xFFF;
+    uint invalidCount = (curBucket.x >> 18) * 8;
+    float originalLitRatio = validCount / (float) (validCount + invalidCount);
+    int effectiveValidCount = min(validCount, bucketStorageCount);
     float effectiveInvalidCount = invalidCount * (effectiveValidCount / (0.00000001f + validCount));
     if (validCount == 0)
         effectiveInvalidCount = invalidCount;
     
     uint samplesCompColorMax = 0;
     static uint compColorMaxStorage[32];
-
+    float2 distanceMoments = 0;
+    
     for (int i = 0; i < effectiveValidCount; ++i)
     {
         uint4 curSample = globalIlumValidSamplesRefined[bucketIndex * bucketStorageCount + i];
@@ -344,11 +366,20 @@ void refineBuckets(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_Grou
         uint compColorMax = max(compColor & 0x1F, max((compColor >> 5) & 0x1F, (compColor >> 10) & 0x1F));
         samplesCompColorMax = max(samplesCompColorMax, compColorMax);
         compColorMaxStorage[i] = compColor | (compColorMax << 16);
+        float dist = f16tof32(curSample.y >> 16);
+        if (dist != 0)
+        {
+            distanceMoments.x += dist;
+            distanceMoments.y += dist * dist;
+        }
+
     }
+    distanceMoments /= max(1, effectiveValidCount);
+    float distanceMean = distanceMoments.x;
+    float distanceVariance = distanceMoments.y - pow(distanceMean, 2);
 
     uint curCompressedIndex = 0;
     int extraInvalidSamples = 0;
-    float minBucketSampleDist = 100000;
     for (i = 0; i < effectiveValidCount; ++i)
     {
         uint curStorage = compColorMaxStorage[i];
@@ -356,29 +387,32 @@ void refineBuckets(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_Grou
         uint compColorMax = curStorage >> 16;
         int maxColorDif = isSampleLeveling ? samplesCompColorMax - compColorMax : 0;
         float removeProb = COLOR_DIF_PROB[maxColorDif];
+        
         if (removeProb > nextRand(rand))
             extraInvalidSamples++;
         else if (curCompressedIndex < 7)
         {
             uint4 curSample = globalIlumValidSamplesRefined[bucketIndex * bucketStorageCount + i];
+            float dist = f16tof32(curSample.y >> 16);
+            float distFac = pow(dist - distanceMean, 2) / distanceVariance;
+            int darkeningOffset = dist == 0 ? 0 : max(0, pow(distFac, 2) * originalLitRatio * noiseSupressionFactor - 1);
+            int3 newColorComp = max(0, int3(compColor & 0x1F, (compColor >> 5) & 0x1F, (compColor >> 10) & 0x1F) + maxColorDif - darkeningOffset);
+            
             curSample.x &= 0xFFFF8000;
-            compColor += maxColorDif | (maxColorDif << 5) | (maxColorDif << 10);
+            compColor = newColorComp.x | (newColorComp.y << 5) | (newColorComp.z << 10);
             curSample.x |= compColor;
-            float curDist = f16tof32(curSample.y >> 16);
-            if (curDist > 0 && (curSample.z >> 31))
-                minBucketSampleDist = min(minBucketSampleDist, f16tof32(curSample.y >> 16));
             globalIlumValidSamplesCompressed[bucketIndex * refinedBucketStorageCount + curCompressedIndex++] = curSample;
         }
     }
     
     int newValidCount = effectiveValidCount - extraInvalidSamples;
-    float newInvalidCountFloat = effectiveInvalidCount + extraInvalidSamples;
-    int newInvalidCount = ((int) newInvalidCountFloat) + (frac(newInvalidCountFloat) > nextRand(rand) ? 1 : 0);
+    float newInvalidCount = effectiveInvalidCount + extraInvalidSamples;
     float validInvalidRatio = newValidCount / (float) max(1, newValidCount + newInvalidCount);
-    uint minBucketSampleDistComp = (log2(0.0401f + minBucketSampleDist) - log2(100000)) * 12 + 255.5f;
     if (newValidCount + newInvalidCount < 12)
         curCompressedIndex = 0;
-    globalIlumBucketInfo[bucketIndex].x = (curBucket.x & 0x3F) | (curCompressedIndex << 6) | (f32tof16(validInvalidRatio) << 9) | (minBucketSampleDistComp << 24);
+    
+    int totalSampleCountComp = min(7, (validCount + invalidCount) / 64);
+    globalIlumBucketInfo[bucketIndex].x = (curBucket.x & 0x3F) | (curCompressedIndex << 6) | (f32tof16(validInvalidRatio) << 9) | (samplesCompColorMax << 24) | (totalSampleCountComp << 29);
     
 }
 

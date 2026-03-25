@@ -85,7 +85,7 @@ namespace NAADF.World.Render
                 }
                 frameCount++;
             }
-            taaIndex = 64 - (frameCount % 64) - 1;
+            taaIndex = 128 - (frameCount % 128) - 1;
         }
 
 
@@ -110,25 +110,33 @@ namespace NAADF.World.Render
 
         }
 
-        readonly Vector2 coprimes = new Vector2(2, 3);
-        protected Vector2 halton(Vector2 s)
+        readonly Point coprimes = new Point(3, 7);
+
+        float Halton1D(int index, int b)
         {
-            Vector4 a = new Vector4(1, 1, 0, 0);
-            while (s.X > 0.0f && s.Y > 0.0f)
+            float f = 1f;
+            float r = 0f;
+
+            while (index > 0)
             {
-                a.X /= coprimes.X;
-                a.Y /= coprimes.Y;
-                a.Z += a.X * (s.X % coprimes.X);
-                a.W += a.Y * (s.Y % coprimes.Y);
-                s.X = (float)Math.Floor(s.X / coprimes.X);
-                s.Y = (float)Math.Floor(s.Y / coprimes.Y);
+                f /= b;
+                r += f * (index % b);
+                index /= b;
             }
-            return new Vector2(a.Z, a.W);
+
+            return r;
+        }
+        Vector2 Halton2D(int i, Point coprimes)
+        {
+            return new Vector2(
+                Halton1D(i, coprimes.X),
+                Halton1D(i, coprimes.Y)
+            );
         }
 
         protected Vector2 getJitter(int frame)
         {
-            return halton(new Vector2((frame % 32) + 1, (frame % 32) + 1)) - new Vector2(0.5f);
+            return Halton2D((frame % 32) + 1, coprimes) - new Vector2(0.5f);
         }
 
         public void Dispose()

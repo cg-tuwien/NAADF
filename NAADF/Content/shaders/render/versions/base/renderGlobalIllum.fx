@@ -18,14 +18,14 @@ int camPosIntX, camPosIntY, camPosIntZ;
 matrix invCamMatrix;
 float3 skySunDir;
 int screenWidth, screenHeight;
-int randCounter, maxBounceCount, frameCount;
+int randCounter, randCounter2, maxBounceCount, frameCount;
 float2 taaJitter;
 float3 sunColor;
 int validSampleStorageCount, invalidSampleStorageCount, accumIndex, taaIndex;
 
-matrix camRotOld[64];
-float3 taaOldCamPosFromCurCamInt[64];
-float2 taaJitterOld[64];
+matrix camRotOld[128];
+float3 taaOldCamPosFromCurCamInt[128];
+float2 taaJitterOld[128];
 
 groupshared uint sharedResCount = 0;
 groupshared uint globalResCountValid = 0;
@@ -65,7 +65,7 @@ void calcGlobalIlum(uint3 globalID : SV_DispatchThreadID, uint localIndex : SV_G
     uint2 pixelPos = uint2(pixelPosComp & 0xFFFF, (pixelPosComp >> 16) & 0xFFFF);
 
     
-    uint2 rand = initRand(uint3(pixelPos, randCounter));
+    uint2 rand = initRand(uint3(globalID.x, randCounter, randCounter2));
     float3 rayDir = getRayDir(invCamMatrix, pixelPos, screenWidth, screenHeight, taaJitter);
 
     uint4 firstHit = firstHitData[pixelPos.x + pixelPos.y * screenWidth];
@@ -240,7 +240,7 @@ void calcGlobalIlum(uint3 globalID : SV_DispatchThreadID, uint localIndex : SV_G
     const float RADIANCE_REDUCTION_VAL = 2.0f;
     if (radianceSingle < RADIANCE_REDUCTION_VAL)
     {
-        float test = max(radianceSingle, 0.1f);
+        float test = max(radianceSingle, 0.05f);
         radiance *= RADIANCE_REDUCTION_VAL / test;
         if (nextRand(rand) > test / RADIANCE_REDUCTION_VAL)
             radiance = float3(0, 0, 0);

@@ -13,19 +13,21 @@ namespace NAADF.World.Render
 {
     public class SettingDataRenderBase
     {
-        public bool isDenoise = true, isTAAJitter = true, skipSamples = true, isSampleLeveling = true, colorCorrection = true, isAtmosphereInteraction = true;
+        public bool isDenoise = true, isTAAJitter = true, skipSamples = true, isSampleLeveling = true, isVaryingResmaplingRadius = true, isAtmosphereInteraction = true;
         public int taaSampleMaxAge = 32;
         public int bounceCount = 3;
         public int spatialResampleVisibilityTestMaxDepth = 80;
-        public float denoiseThresh = 100;
-        public int globalIllumMaxAccum = 64;
-        public float spatialResampleSize = 225.0f;
+        public float denoiseThresh = 400;
+        public int globalIllumMaxAccum = 128;
+        public float radiusLitFactor = 1.5f;
+        public float spatialResampleSize = 500.0f;
+        public float noiseSupressionFactor = 0.4f;
 
         public void RenderImGui()
         {
             ImGui.SliderInt("Bounces", ref bounceCount, 0, 10);
             ImGuiCommon.HelperIcon("The maximum amount of bounces for secondary rays", 500);
-            ImGui.SliderInt("Resampling max frames", ref globalIllumMaxAccum, 1, 64);
+            ImGui.SliderInt("Resampling max frames", ref globalIllumMaxAccum, 1, 128);
             ImGuiCommon.HelperIcon("The amount of frames being temporally acumulated for resampling", 500);
             ImGui.SliderInt("Taa max frames", ref taaSampleMaxAge, 1, 32);
             ImGuiCommon.HelperIcon("The amount of frames are used for TAA", 500);
@@ -35,7 +37,9 @@ namespace NAADF.World.Render
             ImGuiCommon.HelperIcon("The max amount of ray steps for resampling visibility testing. Lower values can improve performance but cause light leaks", 500);
             ImGui.SliderFloat("Denoise Threshold", ref denoiseThresh, 0.1f, 500.0f, "%.5g", ImGuiSliderFlags.Logarithmic);
             ImGuiCommon.HelperIcon("The weighting factor for the bilateral filter", 500);
-            ImGui.Checkbox("Color correction", ref colorCorrection);
+            ImGui.SliderFloat("Varying radius factor", ref radiusLitFactor, 0.0f, 1000.0f, "%.3g", ImGuiSliderFlags.Logarithmic);
+            ImGui.SliderFloat("Noise suppression", ref noiseSupressionFactor, 0.01f, 100.0f, "%.3g", ImGuiSliderFlags.Logarithmic);
+            ImGui.Checkbox("Varying resampling radius", ref isVaryingResmaplingRadius);
             ImGuiCommon.HelperIcon("Mitigates some of the darkening from resampling", 500);
             ImGui.Checkbox("TAA Jitter", ref isTAAJitter);
             ImGui.Checkbox("Sample leveling", ref isSampleLeveling);
@@ -51,7 +55,7 @@ namespace NAADF.World.Render
     public class WorldRenderBase : WorldRender
     {
         public static readonly int globalIllumValidSampleStorageCount = 2;
-        public static readonly int globalIllumInvalidSampleStorageCount = 4;
+        public static readonly int globalIllumInvalidSampleStorageCount = 8;
         public static readonly int globalIllumBucketStorageCount = 32;
         public static readonly int globalIllumRefinedBucketStorageCount = 8;
 
@@ -143,11 +147,11 @@ namespace NAADF.World.Render
             taaSampleAccum = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), App.ScreenWidth * App.ScreenHeight, BufferUsage.None, ShaderAccess.ReadWrite);
             taaDistMinMax = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), App.ScreenWidth * App.ScreenHeight, BufferUsage.None, ShaderAccess.ReadWrite);
 
-            taaSampleCamTransform = new Matrix[64];
-            taaSampleCamTransformInvers = new Matrix[64];
-            taaOldCamPosFromCurCamInt = new Vector3[64];
-            taaSampleJitter = new Vector2[64];
-            oldCamPositions = new PositionSplit[64];
+            taaSampleCamTransform = new Matrix[128];
+            taaSampleCamTransformInvers = new Matrix[128];
+            taaOldCamPosFromCurCamInt = new Vector3[128];
+            taaSampleJitter = new Vector2[128];
+            oldCamPositions = new PositionSplit[128];
 
             // Global Illumination
             int globalIlumBucketSizeX = (App.ScreenWidth + 7) / 8;
@@ -158,7 +162,7 @@ namespace NAADF.World.Render
             globalIlumValidSamplesCompressed = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), globalIlumBucketSizeX * globalIlumBucketSizeY * globalIllumRefinedBucketStorageCount, BufferUsage.None, ShaderAccess.ReadWrite);
             globalIlumValidSamplesRefined = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), globalIlumBucketSizeX * globalIlumBucketSizeY * globalIllumBucketStorageCount, BufferUsage.None, ShaderAccess.ReadWrite);
             globalIlumInvalidSamples = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), App.ScreenWidth * App.ScreenHeight * globalIllumInvalidSampleStorageCount, BufferUsage.None, ShaderAccess.ReadWrite);
-            globalIlumSampleCounts = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), 64 + 3, BufferUsage.None, ShaderAccess.ReadWrite);
+            globalIlumSampleCounts = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), 128 + 3, BufferUsage.None, ShaderAccess.ReadWrite);
 
             globalIlumValidDispatch = new IndirectDrawBuffer(App.graphicsDevice, BufferUsage.None, ShaderAccess.ReadWrite, 5);
             globalIlumValidDispatch.SetData(new DispatchComputeArguments { GroupCountX = 1, GroupCountY = 1, GroupCountZ = 1 });
@@ -178,13 +182,13 @@ namespace NAADF.World.Render
 
             Vector2 taaJitter = settings.isTAAJitter ? getJitter(frameCount) : Vector2.Zero;
 
-            int taaIndexOld = (taaIndex + 1) % 64;
+            int taaIndexOld = (taaIndex + 1) % 128;
             PositionSplit camPos = camera.GetPos();
             oldCamPositions[taaIndex] = camPos;
             taaSampleCamTransform[taaIndex] = camera.viewProjTransform;
             taaSampleCamTransformInvers[taaIndex] = camera.invViewProjTransform;
             taaSampleJitter[taaIndex] = taaJitter;
-            for (int i = 0; i < 64; ++i)
+            for (int i = 0; i < 128; ++i)
             {
                 taaOldCamPosFromCurCamInt[i] = (oldCamPositions[i] - camPos).toVector3();
             }
@@ -295,6 +299,7 @@ namespace NAADF.World.Render
             globalIllumEffect.Parameters["firstHitData"].SetValue(firstHitData);
             globalIllumEffect.Parameters["maxBounceCount"].SetValue(settings.bounceCount);
             globalIllumEffect.Parameters["randCounter"].SetValue(randValues[randCounter++]);
+            globalIllumEffect.Parameters["randCounter2"].SetValue(randValues[randCounter++]);
             globalIllumEffect.Parameters["frameCount"].SetValue(frameCount);
             globalIllumEffect.Parameters["globalIlumValidSamples"].SetValue(globalIlumValidSamples);
             globalIllumEffect.Parameters["globalIlumInvalidSamples"].SetValue(globalIlumInvalidSamples);
@@ -341,6 +346,7 @@ namespace NAADF.World.Render
             sampleRefineEffect.Parameters["camRotOld"].SetValue(taaSampleCamTransformInvers);
             sampleRefineEffect.Parameters["taaOldCamPosFromCurCamInt"].SetValue(taaOldCamPosFromCurCamInt);
             sampleRefineEffect.Parameters["isSampleLeveling"].SetValue(settings.isSampleLeveling);
+            sampleRefineEffect.Parameters["noiseSupressionFactor"].SetValue(settings.noiseSupressionFactor);
             sampleRefineEffect.Parameters["entityInstancesHistory"]?.SetValue(entityHandler?.entityInstancesHistoryGpu);
 
             sampleRefineEffect.Techniques[0].Passes["ValidHistory"].ApplyCompute();
@@ -368,7 +374,8 @@ namespace NAADF.World.Render
             spatialResamplingEffect.Parameters["test1"].SetValue(settings.spatialResampleSize);
             spatialResamplingEffect.Parameters["bucketStorageCount"].SetValue(globalIllumBucketStorageCount);
             spatialResamplingEffect.Parameters["sunColor"].SetValue(sunColor);
-            spatialResamplingEffect.Parameters["colorCorrection"].SetValue(settings.colorCorrection);
+            spatialResamplingEffect.Parameters["isVaryingResmaplingRadius"].SetValue(settings.isVaryingResmaplingRadius);
+            spatialResamplingEffect.Parameters["radiusLitFactor"].SetValue(settings.radiusLitFactor);
 
             spatialResamplingEffect.Parameters["spatialVisibilityCount"].SetValue(settings.spatialResampleVisibilityTestMaxDepth);
             spatialResamplingEffect.setCameraPos(camPos);
@@ -384,7 +391,6 @@ namespace NAADF.World.Render
             spatialResamplingEffect.Parameters["isDenoise"].SetValue(settings.isDenoise);
             spatialResamplingEffect.Parameters["firstHitAbsorption"].SetValue(firstHitAbsorption);
             spatialResamplingEffect.Parameters["finalColor"]?.SetValue(finalColor);
-            spatialResamplingEffect.Parameters["camRotOld"].SetValue(taaSampleCamTransform[(taaIndex + 1) % 64]);
             spatialResamplingEffect.Parameters["entityInstancesHistory"]?.SetValue(entityHandler?.entityInstancesHistoryGpu);
 
             spatialResamplingEffect.Techniques[0].Passes["SpatialResampling"].ApplyCompute();

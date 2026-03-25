@@ -134,18 +134,18 @@ namespace NAADF.World.Data
             chunkUpdate = new Uint2[2000000];
             entityChunkInstancesProcessed = new EntityChunkInstanceGpu[2000000];
             entityChunkInstancesProcessed = new EntityChunkInstanceGpu[2000000];
-            entityInstancesHistory = new Uint4[16384 * 64];
+            entityInstancesHistory = new Uint4[16384 * 128];
             entityChunkInstancesInfo = new();
             entityChunkInstancesInfoOld = new();
             entityChunkInstancesHashed = new HashSet<EntityChunkInstanceHash>(new EntityChunkInstanceHashComparer(entityChunkInstances));
             chunkChanges = new BitArray(worldData.chunkCount);
 
-            entityInstancesHistoryDynamic = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), 16384 * 64, BufferUsage.None, ShaderAccess.Read, StructuredBufferType.Basic, -1, true);
+            entityInstancesHistoryDynamic = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), 16384 * 128, BufferUsage.None, ShaderAccess.Read, StructuredBufferType.Basic, -1, true);
             entityChunkInstancesDynamic = new StructuredBuffer(App.graphicsDevice, typeof(EntityChunkInstanceGpu), 2000000, BufferUsage.None, ShaderAccess.Read, StructuredBufferType.Basic, -1, true);
             chunkUpdateDynamic = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), 2000000, BufferUsage.None, ShaderAccess.ReadWrite);
 
             entityVoxelDataGpu = new StructuredBuffer(App.graphicsDevice, typeof(uint), 100_000_000, BufferUsage.None, ShaderAccess.ReadWrite);
-            entityInstancesHistoryGpu = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), 16384 * 64, BufferUsage.None, ShaderAccess.ReadWrite);
+            entityInstancesHistoryGpu = new StructuredBuffer(App.graphicsDevice, typeof(Uint4), 16384 * 128, BufferUsage.None, ShaderAccess.ReadWrite);
             entityChunkInstancesGpu = new StructuredBuffer(App.graphicsDevice, typeof(EntityChunkInstanceGpu), 2000000, BufferUsage.None, ShaderAccess.ReadWrite);
 
             string[] modelsToLoad = ["car1", "car2", "cars"];
