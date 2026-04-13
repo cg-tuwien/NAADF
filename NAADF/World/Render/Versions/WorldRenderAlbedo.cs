@@ -57,11 +57,11 @@ namespace NAADF.World.Render
             taaSamples = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), App.ScreenWidth * App.ScreenHeight * 32, BufferUsage.None, ShaderAccess.ReadWrite);
             taaSampleAccum = new StructuredBuffer(App.graphicsDevice, typeof(Uint2), App.ScreenWidth * App.ScreenHeight, BufferUsage.None, ShaderAccess.ReadWrite);
 
-            taaSampleCamTransform = new Matrix[64];
-            taaSampleCamTransformInvers = new Matrix[64];
-            oldCamPositions = new PositionSplit[64];
-            taaSampleJitter = new Vector2[64];
-            taaOldCamPosFromCurCamInt = new Vector3[64];
+            taaSampleCamTransform = new Matrix[128];
+            taaSampleCamTransformInvers = new Matrix[128];
+            oldCamPositions = new PositionSplit[128];
+            taaSampleJitter = new Vector2[128];
+            taaOldCamPosFromCurCamInt = new Vector3[128];
         }
 
         protected override void RenderInternal(WorldData data, Vector3 sunColor, float gameTime)
@@ -78,7 +78,7 @@ namespace NAADF.World.Render
             taaSampleCamTransform[taaIndex] = camera.viewProjTransform;
             taaSampleCamTransformInvers[taaIndex] = camera.invViewProjTransform;
             taaSampleJitter[taaIndex] = taaJitter;
-            for(int i = 0; i < 64; ++i)
+            for(int i = 0; i < 128; ++i)
             {
                 taaOldCamPosFromCurCamInt[i] = (oldCamPositions[i] - camPos).toVector3();
             }

@@ -52,7 +52,7 @@ namespace NAADF.Common
             return newPos;
         }
 
-        public static PositionSplit operator +(PositionSplit value1)
+        public static PositionSplit operator -(PositionSplit value1)
         {
             PositionSplit newPos;
             newPos.integer = new Point3(0) - value1.integer;

@@ -11,9 +11,9 @@ float3 camPosFrac;
 int camPosIntX, camPosIntY, camPosIntZ;
 
 matrix invCamMatrix, camMatrix;
-matrix camRotOld[64];
-float3 taaOldCamPosFromCurCamInt[64];
-float2 taaJitterOld[64];
+matrix camRotOld[128];
+float3 taaOldCamPosFromCurCamInt[128];
+float2 taaJitterOld[128];
 
 float2 taaJitter;
 uint screenWidth, screenHeight, frameCount, sampleAge;
@@ -87,7 +87,7 @@ void reprojectOldSamples(uint3 globalID : SV_DispatchThreadID, uint3 groupID : S
     float4 colorSum = float4(0, 0, 0, 0);
     for (i = 1; i < sampleAge; ++i)
     {
-        uint curHistoryIndex = (taaIndex + i) % 64;
+        uint curHistoryIndex = (taaIndex + i) % 128;
         uint curTaaIndex = (taaIndex + i) % 32;
         
         // Get virtual position for reprojection

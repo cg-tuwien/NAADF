@@ -19,7 +19,7 @@ namespace NAADF.World.Render
         public int spatialResampleVisibilityTestMaxDepth = 80;
         public float denoiseThresh = 400;
         public int globalIllumMaxAccum = 128;
-        public float radiusLitFactor = 1.5f;
+        public float radiusLitFactor = 3.0f;
         public float spatialResampleSize = 500.0f;
         public float noiseSupressionFactor = 0.4f;
 
