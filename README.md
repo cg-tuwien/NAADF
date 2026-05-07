@@ -4,7 +4,7 @@
 *A minecraft world rendered in real-time without using LOD. The world is 8256^2 voxels large.*
 
 ## Introduction
-This voxel engine is an implementation of our research paper "NAADF: Globally Illuminated Voxel Worlds Accelerated with Nested Axis-Aligned Distance Fields".\
+This voxel engine is an implementation of our research paper ["NAADF: Globally Illuminated Voxel Worlds Accelerated with Nested Axis-Aligned Distance Fields"](https://diglib.eg.org/handle/10.1111/cgf70413).\
 It supports dynamic entites and editing with a world size of up to 16384^3 voxels.
 
 ## Implementation Details
